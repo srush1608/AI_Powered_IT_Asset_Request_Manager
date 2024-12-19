@@ -1,17 +1,20 @@
+from sqlalchemy import Column, String, Integer, Boolean, UniqueConstraint
+from sqlalchemy.ext.declarative import declarative_base
 
-from sqlalchemy import Column, Integer, String, Boolean
-# from models import Base
-from backend.database import Base
-
+Base = declarative_base()  
 
 class Employee(Base):
     __tablename__ = 'employees'
-
-    id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(String, unique=True, index=True)
+    
+    # Defining unique constraint for the 'email' column
+    __table_args__ = (
+        UniqueConstraint('email', name='employees_email_key'),
+    )
+    
+    employee_id = Column(String, primary_key=True)
     first_name = Column(String)
     last_name = Column(String)
-    email = Column(String, unique=True)
+    email = Column(String, unique=True)  # You can also add `unique=True` here
     phone = Column(String)
     department = Column(String)
     designation = Column(String)
@@ -19,12 +22,5 @@ class Employee(Base):
     employee_status = Column(Boolean, default=True)
     password = Column(String)
 
-class User(Base):
-    __tablename__ = 'users'
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)    
-
     def __repr__(self):
-        return f"<Employee(name={self.first_name} {self.last_name}, email={self.email})>"
+        return f"<Employee(employee_id={self.employee_id}, first_name={self.first_name}, last_name={self.last_name})>"

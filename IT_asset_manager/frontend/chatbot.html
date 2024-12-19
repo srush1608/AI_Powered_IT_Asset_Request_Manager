@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chatbot</title>
     <style>
-        /* General Reset */
         * {
             margin: 0;
             padding: 0;
@@ -13,36 +12,64 @@
             font-family: Arial, sans-serif;
         }
 
-        /* Body Styling */
         body {
-            background-color: #f0f8ff; /* Light blue background */
+            background-color: #f0f8ff;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
+            padding: 20px;
         }
 
-        /* Container Styling */
-        form {
-            background-color: #ffffff; /* White form background */
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #0044cc;
+        }
+
+        #chat-container {
+            background-color: #ffffff;
             border-radius: 8px;
             padding: 20px;
             box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
             width: 100%;
-            max-width: 600px;
+            max-width: 800px;
+            margin-bottom: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            min-height: 300px;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+
+        #chatForm {
             display: flex;
             gap: 10px;
+            width: 100%;
         }
 
-        /* Header Styling */
-        h2 {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #0044cc; /* Blue text */
-        }
-
-        /* Input Field Styling */
         input {
             flex: 1;
             padding: 10px;
@@ -57,9 +84,8 @@
             box-shadow: 0 0 5px rgba(0, 68, 204, 0.5);
         }
 
-        /* Button Styling */
         button {
-            background-color: #0044cc; /* Blue button */
+            background-color: #0044cc;
             color: #ffffff;
             padding: 10px 20px;
             border: none;
@@ -69,24 +95,11 @@
         }
 
         button:hover {
-            background-color: #0033aa; /* Darker blue on hover */
+            background-color: #0033aa;
         }
 
-        /* Response Section Styling */
-        #response {
-            margin-top: 20px;
-            background-color: #ffffff; /* White background for response */
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 600px;
-            color: #333; /* Dark text for readability */
-        }
-
-        /* Responsive Design */
         @media (max-width: 500px) {
-            form {
+            #chatForm {
                 flex-direction: column;
             }
 
@@ -98,19 +111,59 @@
 </head>
 <body>
     <h2>Chatbot</h2>
-    <form id="chatForm">
-        <input type="text" id="query" placeholder="Ask something..." required>
-        <button type="submit">Send</button>
-    </form>
-    <div id="response"></div>
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <form id="chatForm">
+            <input type="text" id="query" placeholder="Type your message..." required>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+
     <script>
+        // Check if user is logged in
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/';
+        }
+
+        const messagesContainer = document.getElementById('chat-messages');
+        
+        function addMessage(message, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            messageDiv.textContent = message;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const query = document.getElementById('query').value;
+            try {
+                const query = document.getElementById('query').value;
+                addMessage(query, true);
+                
+                const response = await fetch('/api/chat/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ query: query })
+                });
 
-            const response = await fetch(`/chat/chat?query=${encodeURIComponent(query)}`);
-            const data = await response.json();
-            document.getElementById('response').textContent = data.response;
+                if (response.ok) {
+                    const data = await response.json();
+                    addMessage(data.response);
+                } else {
+                    const errorData = await response.json();
+                    addMessage('Error: ' + errorData.detail);
+                }
+                
+                document.getElementById('query').value = '';
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('An error occurred while sending message');
+            }
         });
     </script>
 </body>

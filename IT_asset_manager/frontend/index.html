@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
     <style>
-        /* General Reset */
         * {
             margin: 0;
             padding: 0;
@@ -13,18 +12,16 @@
             font-family: Arial, sans-serif;
         }
 
-        /* Body Styling */
         body {
-            background-color: #f0f8ff; /* Light blue background */
+            background-color: #f0f8ff;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
         }
 
-        /* Container Styling */
         form {
-            background-color: #ffffff; /* White form background */
+            background-color: #ffffff;
             border-radius: 8px;
             padding: 20px 30px;
             box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
@@ -32,14 +29,12 @@
             max-width: 400px;
         }
 
-        /* Header Styling */
         h2 {
             text-align: center;
             margin-bottom: 20px;
-            color: #0044cc; /* Blue text */
+            color: #0044cc;
         }
 
-        /* Label Styling */
         label {
             display: block;
             font-size: 14px;
@@ -47,7 +42,6 @@
             margin-bottom: 5px;
         }
 
-        /* Input Field Styling */
         input {
             width: 100%;
             padding: 10px;
@@ -62,9 +56,8 @@
             box-shadow: 0 0 5px rgba(0, 68, 204, 0.5);
         }
 
-        /* Button Styling */
         button {
-            background-color: #0044cc; /* Blue button */
+            background-color: #0044cc;
             color: #ffffff;
             padding: 10px 15px;
             border: none;
@@ -75,10 +68,9 @@
         }
 
         button:hover {
-            background-color: #0033aa; /* Darker blue on hover */
+            background-color: #0033aa;
         }
 
-        /* Responsive Design */
         @media (max-width: 500px) {
             form {
                 padding: 15px;
@@ -103,22 +95,33 @@
         <input type="password" id="password" name="password" placeholder="Enter your password" required>
         <button type="submit">Login</button>
     </form>
+
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
+            try {
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
 
-            const response = await fetch('/api/login/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
+                const response = await fetch('/api/login/', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
 
-            if (response.ok) {
-                window.location.href = '/frontend/chatbot.html';
-            } else {
-                alert('Login failed');
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('token', data.access_token);
+                    window.location.href = '/chatbot.html';
+                } else {
+                    const errorData = await response.json();
+                    alert('Login failed: ' + errorData.detail);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred during login');
             }
         });
     </script>
