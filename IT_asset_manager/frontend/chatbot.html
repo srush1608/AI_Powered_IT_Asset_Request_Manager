@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot</title>
+    <style>
+        /* General Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Body Styling */
+        body {
+            background-color: #f0f8ff; /* Light blue background */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        /* Container Styling */
+        form {
+            background-color: #ffffff; /* White form background */
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Header Styling */
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #0044cc; /* Blue text */
+        }
+
+        /* Input Field Styling */
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #0044cc;
+            box-shadow: 0 0 5px rgba(0, 68, 204, 0.5);
+        }
+
+        /* Button Styling */
+        button {
+            background-color: #0044cc; /* Blue button */
+            color: #ffffff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0033aa; /* Darker blue on hover */
+        }
+
+        /* Response Section Styling */
+        #response {
+            margin-top: 20px;
+            background-color: #ffffff; /* White background for response */
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+            color: #333; /* Dark text for readability */
+        }
+
+        /* Responsive Design */
+        @media (max-width: 500px) {
+            form {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h2>Chatbot</h2>
+    <form id="chatForm">
+        <input type="text" id="query" placeholder="Ask something..." required>
+        <button type="submit">Send</button>
+    </form>
+    <div id="response"></div>
+    <script>
+        document.getElementById('chatForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = document.getElementById('query').value;
+
+            const response = await fetch(`/chat/chat?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            document.getElementById('response').textContent = data.response;
+        });
+    </script>
+</body>
+</html>
