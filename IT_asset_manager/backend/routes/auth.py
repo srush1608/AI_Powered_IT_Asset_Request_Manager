@@ -20,12 +20,19 @@ class UserInLogin(BaseModel):
     email: str  
     password: str
 
-def create_access_token(data: dict, expires_delta: timedelta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)):
+import jwt
+from datetime import datetime, timedelta
+
+
+def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + expires_delta
+    expire = datetime.utcnow() + timedelta(hours=1)
     to_encode.update({"exp": expire})
+    
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
 
 def authenticate_user(email: str, password: str, db: Session):
     employee = db.query(models.Employee).filter(models.Employee.email == email).first()
@@ -52,3 +59,8 @@ def login(user: UserInLogin, db: Session = Depends(database.get_db)):
     
     access_token = create_access_token(data={"sub": authenticated_user.email})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/chat/")
+async def chat_endpoint(query: dict, db: Session = Depends(database.get_db)):
+    # Your chat handling logic here
+    return {"response": "This is a response from the chat endpoint."}
