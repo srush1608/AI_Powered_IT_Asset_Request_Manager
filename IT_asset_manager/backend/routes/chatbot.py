@@ -1,10 +1,7 @@
-# backend/routes/chatbot.py
-
 from fastapi import APIRouter, Depends, HTTPException, Request
-from backend.chatbot_graph import StateManager, Graph, AssetAvailabilityTool, DynamicChatNode, InvalidQueryNode
+from backend.chatbot_graph import StateManager, Graph, AssetAvailabilityTool
 from backend.database import SessionLocal
 from sqlalchemy.orm import Session
-import json
 import logging
 
 router = APIRouter()
@@ -23,6 +20,8 @@ async def chatbot_interaction(request: Request, db: Session = Depends(get_db)):
         body = await request.json()
         message = body.get("query")
         
+        logging.debug(f"Received message: {message}")  # Log the received message
+        
         if not message:
             raise HTTPException(status_code=400, detail="Query parameter is missing")
         
@@ -30,42 +29,27 @@ async def chatbot_interaction(request: Request, db: Session = Depends(get_db)):
         state_manager = StateManager()
         availability_tool = AssetAvailabilityTool()
         
-        # Create graph
-        graph = Graph()
-        chat_node = DynamicChatNode(availability_tool)
-        invalid_query_node = InvalidQueryNode()
+        # Initialize the Graph class with required arguments
+        graph = Graph(availability_tool=availability_tool, state_manager=state_manager)
+
+        # Process message
+        result = await graph.process_message(message)
+
+        # Get the last response from conversation history
+        if result['conversation_history']:
+            last_message = result['conversation_history'][-1]
+            return {
+                "response": last_message["content"],
+                "status": "success",
+                "stage": result['conversation_stage']
+            }
         
-        # Add nodes and edges
-        graph.add_node("dynamic_chat", chat_node)
-        graph.add_node("invalid_query", invalid_query_node)
-        
-        # Add edges with conditions
-        graph.add_edge(
-            "dynamic_chat", 
-            "dynamic_chat", 
-            lambda state, msg: any(word in msg.lower() for word in ["hi", "hello", "laptop", "monitor", "keyboard", "mouse"])
-        )
-        graph.add_edge(
-            "dynamic_chat",
-            "invalid_query",
-            lambda state, msg: not any(word in msg.lower() for word in ["hi", "hello", "laptop", "monitor", "keyboard", "mouse"])
-        )
-        
-        # Process message through graph
-        state = state_manager.get_or_create(
-            employee_id="E1234",  # Replace with actual employee ID from token
-            user_email="john.deo@example.com"  # Replace with actual email from token
-        )
-        
-        result = await graph.arun(state, message)
-        
-        # Return the last message from conversation history
-        if result.conversation_history:
-            last_message = result.conversation_history[-1]
-            return {"response": last_message["content"]}
-        else:
-            return {"response": "I apologize, but I couldn't process your request."}
-            
+        return {
+            "response": "I apologize, but I couldn't process your request.",
+            "status": "error",
+            "stage": "error"
+        }
+
     except Exception as e:
         logging.error(f"Error processing chat request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

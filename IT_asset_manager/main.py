@@ -1,14 +1,14 @@
 from fastapi import FastAPI, Form, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from backend.database import Base, engine, get_db
-from backend.routes import auth
+from backend.routes import auth, chatbot
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.requests import Request
 from starlette.middleware.sessions import SessionMiddleware
-from backend.chatbot_graph import Graph, StateManager, AssetAvailabilityTool, DynamicChatNode, InvalidQueryNode
+from backend.chatbot_graph import Graph, StateManager, AssetAvailabilityTool
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -18,7 +18,6 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,17 +29,15 @@ app.add_middleware(
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
-# Include auth router
+# Include routers
 app.include_router(auth.router, prefix="/api")
+app.include_router(chatbot.router, prefix="/api")
 
 # Mount static files
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
 # Add session middleware
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-
-# Initialize state manager for chatbot
-state_manager = StateManager()
 
 # Define request model
 class ChatRequest(BaseModel):
@@ -59,7 +56,7 @@ async def chatbot_page(request: Request):
         return RedirectResponse("/", status_code=302)
     return HTMLResponse(content=open("frontend/chatbot.html").read(), status_code=200)
 
-@app.post("/api/chat")
+@app.post("/api/chat/")
 async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     try:
         message = request.query
@@ -67,44 +64,23 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         if not message:
             raise HTTPException(status_code=400, detail="Query parameter is missing")
 
-        # Initialize chatbot components
-        graph = Graph()
+        # Initialize tools and manager
         availability_tool = AssetAvailabilityTool()
-        chat_node = DynamicChatNode(availability_tool)
-        invalid_query_node = InvalidQueryNode()
+        state_manager = StateManager()
 
-        # Set up graph
-        graph.add_node("dynamic_chat", chat_node)
-        graph.add_node("invalid_query", invalid_query_node)
-        
-        # Update edge conditions
-        graph.add_edge(
-            "dynamic_chat", 
-            "dynamic_chat", 
-            condition=lambda state, msg: any(word in msg.lower() for word in ["hi", "hello", "laptop", "monitor", "keyboard", "mouse"])
-        )
-        graph.add_edge(
-            "dynamic_chat",
-            "invalid_query",
-            condition=lambda state, msg: not any(word in msg.lower() for word in ["hi", "hello", "laptop", "monitor", "keyboard", "mouse"])
-        )
-
-        # Get or create state for user
-        state = state_manager.get_or_create(
-            employee_id="temp_id",  # You can update this with actual user ID
-            user_email="temp@example.com"  # You can update this with actual user email
-        )
+        # Initialize the Graph class with required arguments
+        graph = Graph(availability_tool=availability_tool, state_manager=state_manager)
 
         # Process message
-        result = await graph.arun(state, message)
+        result = await graph.process_message(message)
 
         # Get the last response from conversation history
-        if result.conversation_history:
-            last_message = result.conversation_history[-1]
+        if result['conversation_history']:
+            last_message = result['conversation_history'][-1]
             return {
                 "response": last_message["content"],
-                "status": result.status,
-                "stage": result.conversation_stage
+                "status": "success",
+                "stage": result['conversation_stage']
             }
         
         return {
@@ -116,6 +92,10 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the application."""
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
+if __name__ == "__main__":
+    main()

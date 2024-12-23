@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend import crud, models, database, security
 from pydantic import BaseModel
-import jwt, bcrypt
+import bcrypt
+# import PyJWT as jwt
+import jwt
 import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -19,9 +21,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 class UserInLogin(BaseModel):
     email: str  
     password: str
-
-import jwt
-from datetime import datetime, timedelta
 
 
 def create_access_token(data: dict):
@@ -60,7 +59,7 @@ def login(user: UserInLogin, db: Session = Depends(database.get_db)):
     access_token = create_access_token(data={"sub": authenticated_user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.post("/chat/")
-async def chat_endpoint(query: dict, db: Session = Depends(database.get_db)):
-    # Your chat handling logic here
-    return {"response": "This is a response from the chat endpoint."}
+# @router.post("/chat/")
+# async def chat_endpoint(query: dict, db: Session = Depends(database.get_db)):
+#     # Your chat handling logic here
+#     return {"response": "This is a response from the chat endpoint."}

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -109,6 +110,7 @@
         }
     </style>
 </head>
+
 <body>
     <h2>Chatbot</h2>
     <div id="chat-container">
@@ -121,7 +123,7 @@
 
     <script>
         const messagesContainer = document.getElementById('chat-messages');
-        
+
         // Function to add message to the chat
         function addMessage(message, isUser = false) {
             const messageDiv = document.createElement('div');
@@ -130,43 +132,45 @@
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-    
+
         // On form submit, send a message to the backend
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             try {
                 const query = document.getElementById('query').value;
                 if (!query.trim()) return;
-                
-                addMessage(query, true); // Display user message
-                
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
+
+                addMessage(query, true); 
+
+                const response = await fetch("http://127.0.0.1:8000/api/chat/",{
+                    method: "POST",
                     headers: {
-                        'Content-Type': 'application/json'
+                        "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify({
+                        query: query,
+                    }),
                 });
-    
+
                 if (response.ok) {
                     const data = await response.json();
-                    addMessage(data.response); // Display bot response
+                    addMessage(data.response); 
                 } else {
                     const errorData = await response.json();
                     addMessage('Error: ' + errorData.detail);
                 }
-                
-                document.getElementById('query').value = ''; // Clear input
+
+                document.getElementById('query').value = ''; 
             } catch (error) {
                 console.error('Error:', error);
                 addMessage('An error occurred while sending message');
             }
         });
-    
-        // Add initial greeting when chat loads
+
         window.addEventListener('load', () => {
             addMessage("Hello! How can I help you today?");
         });
     </script>
 </body>
+
 </html>
