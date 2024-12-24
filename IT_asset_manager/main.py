@@ -57,16 +57,16 @@ async def chatbot_page(request: Request):
     return HTMLResponse(content=open("frontend/chatbot.html").read(), status_code=200)
 
 @app.post("/api/chat/")
-async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat_endpoint(
+    request: ChatRequest, 
+    db: Session = Depends(get_db),
+    availability_tool: AssetAvailabilityTool = Depends(),
+    state_manager: StateManager = Depends()
+):
     try:
         message = request.query
-        
         if not message:
             raise HTTPException(status_code=400, detail="Query parameter is missing")
-
-        # Initialize tools and manager
-        availability_tool = AssetAvailabilityTool()
-        state_manager = StateManager()
 
         # Initialize the Graph class with required arguments
         graph = Graph(availability_tool=availability_tool, state_manager=state_manager)
@@ -90,7 +90,8 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error occurred: {e}")
+
 
 def main():
     """Entry point for the application."""
