@@ -55,26 +55,29 @@ class AssetAvailabilityTool:
             if asset_type.lower() in asset.get("name", "").lower()
         ]
 
-# class StateManager:
-#     def __init__(self):
-#         self.state = {
-#             "conversation_history": [],
-#             "conversation_stage": None,
-#             "current_request": {},
-#         }
+class StateManager:
+    def __init__(self):
+        self.conversation_history = []
+        self.conversation_stage = None
+        self.current_request = {}
+        self.user_message = ""
 
-#     def get_state(self) -> dict:
-#         return self.state.copy()
+    def add_message(self, role: str, content: str):
+        self.conversation_history.append({"role": role, "content": content})
 
-#     def update_state(self, key: str, value: any):
-#         self.state[key] = value
+    def set_user_message(self, message: str):
+        self.user_message = message
+        self.add_message("user", message)
 
-#     def reset_state(self):
-#         self.state = {
-#             "conversation_history": [],
-#             "conversation_stage": None,
-#             "current_request": {},
-#         }
+    def set_stage(self, stage: str):
+        self.conversation_stage = stage
+
+    def to_dict(self):
+        return {
+            "conversation_history": self.conversation_history,
+            "conversation_stage": self.conversation_stage,
+            "current_request": self.current_request
+        }
 
 @dataclass
 class Node:
@@ -82,8 +85,8 @@ class Node:
     name: str
     process_func: Callable
 
-    async def process(self, state: dict, message: str) -> dict:
-        return await self.process_func(state, message)
+    async def process(self, state: StateManager) -> StateManager:
+        return await self.process_func(state)
 
 class GreetingNode(Node):
     """Node for greeting."""
@@ -93,10 +96,10 @@ class GreetingNode(Node):
             process_func=self.process_greeting
         )
 
-    async def process_greeting(self, state: dict, StateManager) -> dict:
+    async def process_greeting(self, state: StateManager) -> StateManager:
         response = "Hello! What type of asset are you looking for?"
-        state["conversation_stage"] = "awaiting_asset_type"
-        state.conversation_history.append({"role": "assistant", "content": response})
+        state.set_stage("awaiting_asset_type")
+        state.add_message("assistant", response)
         print(f"Assistant: {response}")
         return state
 
@@ -109,9 +112,9 @@ class AssetRequestNode(Node):
         )
         self.availability_tool = availability_tool
 
-    async def process_asset_request(self, state: dict, message: str) -> dict:
+    async def process_asset_request(self, state: StateManager) -> StateManager:
         asset_types = ["laptop", "desktop", "mouse", "keyboard"]
-        mentioned_assets = [asset for asset in asset_types if asset in message.lower()]
+        mentioned_assets = [asset for asset in asset_types if asset in state.user_message.lower()]
 
         if mentioned_assets:
             asset_type = mentioned_assets[0]
@@ -120,15 +123,15 @@ class AssetRequestNode(Node):
 
             if is_available:
                 response = f"Available configurations for {asset_type}: {', '.join(configs)}."
-                state["conversation_stage"] = "awaiting_configuration"
-                state["current_request"] = {"asset_type": asset_type}
+                state.set_stage("awaiting_configuration")
+                state.current_request["asset_type"] = asset_type
             else:
                 response = f"{asset_type} is not available. Would you like to try another asset?"
-                state["conversation_stage"] = "awaiting_asset_type"
+                state.set_stage("awaiting_asset_type")
         else:
             response = "I didn't recognize the asset type. Please specify a laptop, desktop, mouse, or keyboard."
         
-        state["conversation_history"].append({"role": "assistant", "content": response})
+        state.add_message("assistant", response)
         print(f"Assistant: {response}")
         return state
 
@@ -140,11 +143,11 @@ class ConfigurationRequestNode(Node):
             process_func=self.process_configuration
         )
 
-    async def process_configuration(self, state: dict, StateManager) -> dict:
-        state["current_request"]["configuration"] = state.user_message
+    async def process_configuration(self, state: StateManager) -> StateManager:
+        state.current_request["configuration"] = state.user_message
         response = "Please provide the reason for your request."
-        state["conversation_stage"] = "awaiting_reason"
-        state.conversation_history.append({"role": "assistant", "content": response})
+        state.set_stage("awaiting_reason")
+        state.add_message("assistant", response)
         print(f"Assistant: {response}")
         return state
 
@@ -156,11 +159,11 @@ class ReasonRequestNode(Node):
             process_func=self.process_reason
         )
 
-    async def process_reason(self, state: dict, message: str) -> dict:
-        state["current_request"]["reason"] = message
-        response = f"Your request has been recorded: {state['current_request']}. Is there anything else you need?"
-        state["conversation_stage"] = "request_completed"
-        state["conversation_history"].append({"role": "assistant", "content": response})
+    async def process_reason(self, state: StateManager) -> StateManager:
+        state.current_request["reason"] = state.user_message
+        response = f"Your request has been recorded: {state.current_request}. Is there anything else you need?"
+        state.set_stage("request_completed")
+        state.add_message("assistant", response)
         print(f"Assistant: {response}")
         return state
 
@@ -172,34 +175,28 @@ class InvalidQueryNode(Node):
             process_func=self.process_invalid
         )
 
-    async def process_invalid(self, state: dict, message: str) -> dict:
+    async def process_invalid(self, state: StateManager) -> StateManager:
         response = "Sorry, I didn't understand that. Can you please clarify?"
-        state["conversation_history"].append({"role": "assistant", "content": response})
+        state.add_message("assistant", response)
         print(f"Assistant: {response}")
         return state
-
-class StateManager:
-    conversation_history = []
-    conversation_stage = None
-    current_request = {}
-    user_message = ""
 
 class Graph:
     def __init__(self, availability_tool: AssetAvailabilityTool):
         self.availability_tool = availability_tool
-        self.workflow = StateGraph(StateManager)
+        self.state_manager = StateManager()
+        self.workflow = Graph(StateManager)
 
+        
         # Initialize nodes
-        self.start_node = Node(name="START", process_func=self.process_start)
-        self.end_node = Node(name="END", process_func=self.process_end)
         self.greeting_node = GreetingNode()
         self.asset_request_node = AssetRequestNode(self.availability_tool)
         self.configuration_request_node = ConfigurationRequestNode()
         self.reason_request_node = ReasonRequestNode()
         self.invalid_query_node = InvalidQueryNode()
 
-        # Add nodes to workflow
-        self.workflow.add_node("start", self.start_node.process)
+    #     # Add nodes to workflow
+    #     # self.workflow.add_node("start", self.start_node.process)
         self.workflow.add_node("greeting", self.greeting_node.process)
         self.workflow.add_node("asset_request", self.asset_request_node.process)
         self.workflow.add_node("configuration", self.configuration_request_node.process)
@@ -207,66 +204,66 @@ class Graph:
         self.workflow.add_node("invalid", self.invalid_query_node.process)
         self.workflow.add_node("end", self.end_node.process)
 
-        # Define edges
-        self.setup_edges()
+    #     self.workflow.add_edge("start", "greeting")
+        self.workflow.add_edge("greeting","asset_request")
+        self.workflow.add_edge("asset_request", "configuration")
+        self.workflow.add_edge("configuration", "reason")
+        self.workflow.add_edge("reason", "invalid")
+        self.workflow.add_edge("invalid","end")
+        self.workflow.add_edge("end", "greeting")  
 
-    def setup_edges(self):
-        def route_message(state: dict) -> str:
-            stage = state["conversation_stage"]
-            if stage == "awaiting_asset_type":
-                return "asset_request"
-            elif stage == "awaiting_configuration":
-                return "configuration"
-            elif stage == "awaiting_reason":
-                return "reason"
-            elif stage == "request_completed":
-                return "end"  
-            else:
-                return "invalid"
+    # async def process_start(self, state: StateManager) -> StateManager:
+    #     response = "Welcome! How can I assist you today?"
+    #     state.add_message("assistant", response)
+    #     print(f"Assistant: {response}")
+    #     return state
 
-        self.workflow.add_edge("start", "greeting")
-        self.workflow.add_edge("greeting", route_message)
-        self.workflow.add_edge("asset_request", route_message)
-        self.workflow.add_edge("configuration", route_message)
-        self.workflow.add_edge("reason", route_message)
-        self.workflow.add_edge("invalid", route_message)
-        self.workflow.add_edge("end", "start")  
-
-    def process_start(self, state: StateManager) -> StateManager:
-        response = "Welcome! How can I assist you today?"
-        state.conversation_history.append({"role": "assistant", "content": response})
-        print(f"Assistant: {response}")
-        return state
-
-    def process_end(self, state: StateManager) -> StateManager:
+    async def process_end(self, state: StateManager) -> StateManager:
         response = "Thank you for using the service. Goodbye!"
-        state.conversation_history.append({"role": "assistant", "content": response})
+        state.add_message("assistant", response)
         print(f"Assistant: {response}")
         return state
 
-    async def process_message(self, state: StateManager) -> StateManager:
-        # state = self.state_manager.get_state()
-        print(f"User: {state.user_message}")
+    async def process_message(self, message: str) -> dict:
+        self.state_manager.set_user_message(message)
+        print(f"User: {message}")
         
-        if state.user_message() in ["hi", "hello", "hii", "hey", "greetings"]:
-            state = await self.greeting_node.process(state, state.user_message)
+        if message.lower() in ["hi", "hello", "hii", "hey", "greetings"]:
+            await self.greeting_node.process(self.state_manager)
         else:
-            state = await self.workflow.process(state, state.user_message)
-        
+            await self.process_workflow(self.state_manager)
+
+        return self.state_manager.to_dict()
+
+    async def process_workflow(self, state: StateManager) -> StateManager:
+        stage = state.conversation_stage
+        if stage is None or stage == "":
+            await self.greeting_node.process(state)
+        elif stage == "awaiting_asset_type":
+            await self.asset_request_node.process(state)
+        elif stage == "awaiting_configuration":
+            await self.configuration_request_node.process(state)
+        elif stage == "awaiting_reason":
+            await self.reason_request_node.process(state)
+        elif stage == "request_completed":
+            response = "Is there anything else you need help with?"
+            state.add_message("assistant", response)
+            state.set_stage("awaiting_asset_type")
+        else:
+            await self.invalid_query_node.process(state)
         return state
 
-# Example Execution
+# Example usage if running standalone
 if __name__ == "__main__":
-    availability_tool = AssetAvailabilityTool()
-    # state_manager = StateManager()
-    graph = Graph(availability_tool)
-
-    # Simulate dynamic user interaction
     async def main():
+        availability_tool = AssetAvailabilityTool()
+        graph = Graph(availability_tool)
+        
         while True:
             user_input = input("User: ")
             if user_input.lower() in ["exit", "quit"]:
                 break
-            await graph.process_message(user_input)
+            result = await graph.process_message(user_input)
+            print(f"State: {result['conversation_stage']}")
 
     asyncio.run(main())

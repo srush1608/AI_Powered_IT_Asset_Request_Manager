@@ -1,3 +1,4 @@
+# chatbot.py
 from fastapi import APIRouter, Depends, HTTPException, Request
 from backend.chatbot_graph import StateManager, Graph, AssetAvailabilityTool
 from backend.database import SessionLocal
@@ -20,19 +21,16 @@ async def chatbot_interaction(request: Request, db: Session = Depends(get_db)):
         body = await request.json()
         message = body.get("query")
         
-        logging.debug(f"Received message: {message}")  # Log the received message
+        logging.debug(f"Received message: {message}")
         
         if not message:
             raise HTTPException(status_code=400, detail="Query parameter is missing")
         
         # Initialize chatbot components
-        state_manager = StateManager()
         availability_tool = AssetAvailabilityTool()
-        
-        # Initialize the Graph class with required arguments
-        graph = Graph(availability_tool=availability_tool, state_manager=state_manager)
+        graph = Graph(availability_tool=availability_tool)
 
-        # Process message
+        # Process message and get response
         result = await graph.process_message(message)
 
         # Get the last response from conversation history
