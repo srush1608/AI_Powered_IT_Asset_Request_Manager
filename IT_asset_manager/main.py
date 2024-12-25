@@ -1,3 +1,76 @@
+# # main.py
+
+# from fastapi import FastAPI, Form, HTTPException, Depends
+# from fastapi.responses import HTMLResponse, RedirectResponse
+# from backend.chatbot_graph import process_message, create_state_manager
+# from sqlalchemy.orm import Session
+# from pydantic import BaseModel
+
+# # FastAPI app initialization
+# app = FastAPI()
+
+# # Define request model for the chatbot query
+# class ChatRequest(BaseModel):
+#     query: str
+
+# # Define route for processing chatbot messages
+# @app.post("/api/chat/")
+# async def chat_endpoint(
+#     request: ChatRequest, 
+#     db: Session = Depends(get_db)
+# ):
+#     try:
+#         message = request.query
+#         if not message:
+#             raise HTTPException(status_code=400, detail="Query parameter is missing")
+
+#         # Initialize the state manager
+#         state = create_state_manager()
+
+#         # Process message and get response
+#         result = await process_message(state, message)
+
+#         # Get the last response from conversation history
+#         if result['conversation_history']:
+#             last_message = result['conversation_history'][-1]
+#             return {
+#                 "response": last_message["content"],
+#                 "status": "success",
+#                 "stage": result['conversation_stage']
+#             }
+        
+#         return {
+#             "response": "I apologize, but I couldn't process your request.",
+#             "status": "error",
+#             "stage": "error"
+#         }
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error occurred: {e}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from fastapi import FastAPI, Form, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from backend.database import Base, engine, get_db
@@ -57,16 +130,16 @@ async def chatbot_page(request: Request):
     return HTMLResponse(content=open("frontend/chatbot.html").read(), status_code=200)
 
 @app.post("/api/chat/")
-async def chat_endpoint(
-    request: ChatRequest, 
-    db: Session = Depends(get_db),
-    availability_tool: AssetAvailabilityTool = Depends(),
-    state_manager: StateManager = Depends()
-):
+async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     try:
         message = request.query
+        
         if not message:
             raise HTTPException(status_code=400, detail="Query parameter is missing")
+
+        # Initialize tools and manager
+        availability_tool = AssetAvailabilityTool()
+        state_manager = StateManager()
 
         # Initialize the Graph class with required arguments
         graph = Graph(availability_tool=availability_tool, state_manager=state_manager)
@@ -90,8 +163,7 @@ async def chat_endpoint(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error occurred: {e}")
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 def main():
     """Entry point for the application."""
