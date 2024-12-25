@@ -209,11 +209,17 @@
 
 
 
+
 import requests
 from dotenv import load_dotenv
 import os
 from typing import List, Dict, Any
 import asyncio
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -222,93 +228,181 @@ class AssetAvailabilityTool:
     def __init__(self):
         self.bluetally_base_url = "https://app.bluetallyapp.com/api/v1/assets"
         self.bluetally_api_key = os.getenv("BLUETALLY_API_KEY")
-        print(f"DEBUG: Initialized AssetAvailabilityTool with API key: {'Present' if self.bluetally_api_key else 'Missing'}")
-        print("*********************************")
-
+        # Initialize session for persistent headers
+        self.session = requests.Session()
+        logger.info(f"Initialized AssetAvailabilityTool with API key: {'Present' if self.bluetally_api_key else 'Missing'}")
+        
     def fetch_all_assets(self) -> List[dict]:
         """Fetch all assets from the API with pagination"""
-        print("\nDEBUG: Fetching all assets from API")
+        logger.info("Fetching all assets from API")
         all_assets = []
         offset = 0
-        limit = 50  # Fetch 50 assets at a time
-        while True:
-            try:
-                headers = {
-                    "accept": "application/json",
-                    "Authorization": f"Bearer {self.bluetally_api_key}"
-                }
-                print(f"DEBUG: Making API request to {self.bluetally_base_url}, offset: {offset}, limit: {limit}")
+        limit = 50
+        
+        try:
+            # Set up headers for Cloudflare
+            headers = {
+                "accept": "application/json",
+                "authorization": f"Bearer {self.bluetally_api_key}",
+                # "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                # "Accept-Language": "en-US,en;q=0.9",
+                # "Accept-Encoding": "gzip, deflate, br",
+                # "Connection": "keep-alive",
+                # "Cache-Control": "no-cache",
+                # "Pragma": "no-cache"
+            }
+            
+            # Update session headers
+            self.session.headers.update(headers)
 
-                response = requests.get(
-                    self.bluetally_base_url,
-                    headers=headers,
-                    params={"limit": limit, "offset": offset}  # Adding the offset parameter to paginate
-                )
-                print(f"DEBUG: API Response Status Code: {response.status_code}")
-
-                if response.status_code == 200:
+            # Make first request to get total count
+            params = {
+                "limit": limit,
+                "sort": "asset_id",
+                "order": "asc",
+                "offset": offset
+            }
+            
+            logger.debug(f"Making initial API request with params: {params}")
+            
+            response = self.session.get(
+                self.bluetally_base_url,
+                params=params,
+                timeout=30  # Add timeout
+            )
+            
+            # Handle response codes
+            if response.status_code == 200:
+                try:
                     assets = response.json()
-                    if not assets:
-                        print("DEBUG: No more assets found.")
-                        break  # Break the loop if no more assets are available
+                    if assets:
+                        all_assets.extend(assets)
+                        while len(assets) == limit:
+                            offset += limit
+                            params["offset"] = offset
+                            response = self.session.get(
+                                self.bluetally_base_url,
+                                params=params,
+                                timeout=30
+                            )
+                            if response.status_code == 200:
+                                assets = response.json()
+                                all_assets.extend(assets)
+                            else:
+                                logger.error(f"Pagination request failed: {response.status_code}")
+                                break
+                except ValueError as e:
+                    logger.error(f"JSON decode error: {str(e)}")
+                    logger.error(f"Response content: {response.text[:200]}...")
+            elif response.status_code == 403:
+                logger.error("Access forbidden - Cloudflare protection detected")
+                logger.error(f"Response headers: {dict(response.headers)}")
+            else:
+                logger.error(f"Initial API request failed: {response.status_code}")
+                logger.error(f"Response content: {response.text[:200]}...")
 
-                    all_assets.extend(assets)  # Add the fetched assets to the list
-                    print(f"DEBUG: Successfully fetched {len(assets)} assets. Total count: {len(all_assets)}")
-
-                    offset += limit  # Update the offset for the next page
-
-                else:
-                    print(f"DEBUG: API request failed. Status code: {response.status_code}")
-                    print(f"DEBUG: Error response: {response.text}")
-                    break  # Break the loop on failure
-
-            except Exception as e:
-                print(f"DEBUG: Error fetching assets: {str(e)}")
-                break  # Break the loop if there's an error
-
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+        
+        logger.info(f"Retrieved {len(all_assets)} assets in total")
         return all_assets
 
     def get_assets_by_type(self, asset_type: str) -> List[dict]:
         """Filter assets by type"""
-        all_assets = self.fetch_all_assets()  # Fetch all assets
-        matching_assets = [asset for asset in all_assets if asset_type in asset.get("product_name", "").lower()]
-        print(matching_assets)
+        all_assets = self.fetch_all_assets()
+        logger.info(f"Filtering {len(all_assets)} assets for type: {asset_type}")
+        
+        # Make search case-insensitive and more flexible
+        asset_type_lower = asset_type.lower()
+        matching_assets = [
+            asset for asset in all_assets 
+            if any(
+                asset_type_lower in field.lower() 
+                for field in [
+                    asset.get("product_name", ""),
+                    asset.get("category_name", ""),
+                    asset.get("asset_name", "")
+                ]
+                if field
+            )
+        ]
+        
+        logger.info(f"Found {len(matching_assets)} matching assets for type: {asset_type}")
         return matching_assets
 
     def get_asset_configurations(self, assets: List[dict]) -> List[Dict[str, Any]]:
         """Extract configurations from assets"""
-        print("\nDEBUG: Extracting configurations")
+        logger.info(f"Extracting configurations for {len(assets)} assets")
         configurations = []
         for asset in assets:
             config = {
-                "name": asset.get("asset_name", ""),
-                "category": asset.get("category_name", ""),
-                "status": asset.get("status_id", ""),
-                "serial": asset.get("asset_serial", "")
+                "name": asset.get("asset_name", "Unknown"),
+                "category": asset.get("category_name", "Uncategorized"),
+                "status": asset.get("status_id", "Unknown"),
+                "serial": asset.get("asset_serial", "N/A"),
+                "type": asset.get("product_name", "Unknown")
             }
             configurations.append(config)
-        print(f"DEBUG: Found configurations: {configurations}")
         return configurations
 
+# class StateManager:
+#     def __init__(self):
+#         logger.info("Initializing StateManager")
+#         self.conversation_history = []
+#         self.conversation_stage = None
+#         self.user_message = ""
+#         self.current_asset_type = None
+
+#     def add_message(self, role: str, content: str):
+#         self.conversation_history.append({"role": role, "content": content})
+
+#     def set_user_message(self, message: str):
+#         self.user_message = message
+#         self.add_message("user", message)
+
+#     def set_stage(self, stage: str):
+#         valid_stages = {
+#             "awaiting_asset_type",
+#             "awaiting_configuration",
+#             "request_completed",
+#             None
+#         }
+#         if stage not in valid_stages:
+#             raise ValueError(f"Invalid stage: {stage}")
+#         self.conversation_stage = stage
+
+#     def to_dict(self):
+#         return {
+#             "conversation_history": self.conversation_history,
+#             "conversation_stage": self.conversation_stage,
+#             "current_asset": {"type": self.current_asset_type}
+#         }
 class StateManager:
     def __init__(self):
-        print("\nDEBUG: Initializing StateManager")
+        logger.info("Initializing StateManager")
         self.conversation_history = []
         self.conversation_stage = None
         self.user_message = ""
         self.current_asset_type = None
 
     def add_message(self, role: str, content: str):
-        print(f"DEBUG: Adding message - Role: {role}, Content: {content}")
         self.conversation_history.append({"role": role, "content": content})
 
     def set_user_message(self, message: str):
-        print(f"DEBUG: Setting user message: {message}")
         self.user_message = message
         self.add_message("user", message)
 
     def set_stage(self, stage: str):
-        print(f"DEBUG: Setting conversation stage to: {stage}")
+        valid_stages = {
+            "awaiting_asset_type",
+            "awaiting_configuration",
+            "request_completed",
+            None
+        }
+        if stage not in valid_stages:
+            raise ValueError(f"Invalid stage: {stage}")
         self.conversation_stage = stage
 
     def to_dict(self):
@@ -317,10 +411,10 @@ class StateManager:
             "conversation_stage": self.conversation_stage,
             "current_asset": {"type": self.current_asset_type}
         }
-
+    
 class GreetingNode:
     async def process(self, state: StateManager) -> StateManager:
-        print("\nDEBUG: Processing greeting")
+        logger.info("Processing greeting")
         response = "Hello! What type of asset are you looking for? (e.g., Laptop, Desktop)"
         state.set_stage("awaiting_asset_type")
         state.add_message("assistant", response)
@@ -331,14 +425,18 @@ class AssetRequestNode:
         self.availability_tool = availability_tool
 
     async def process(self, state: StateManager) -> StateManager:
-        print(f"\nDEBUG: Processing asset request for: {state.user_message}")
+        logger.info(f"Processing asset request: {state.user_message}")
         asset_type = state.user_message.strip().lower()
         state.current_asset_type = asset_type
 
         matching_assets = self.availability_tool.get_assets_by_type(asset_type)
-
+        
         if matching_assets:
-            response = f"Do you have any specific configurations in mind for the {asset_type}? (e.g., brand, RAM size, storage capacity)"
+            configurations = self.availability_tool.get_asset_configurations(matching_assets)
+            response = f"Found {len(matching_assets)} {asset_type}(s). Available configurations:\n"
+            for i, config in enumerate(configurations, 1):
+                response += f"{i}. {config['name']} - {config['category']} - Status: {config['status']}\n"
+            response += "\nWould you like to request any of these configurations? (Reply with the number)"
             state.set_stage("awaiting_configuration")
         else:
             response = f"No {asset_type}s are currently available. Would you like to check another asset type?"
@@ -352,80 +450,114 @@ class ConfigurationNode:
         self.availability_tool = availability_tool
 
     async def process(self, state: StateManager) -> StateManager:
-        print(f"\nDEBUG: Processing configuration request for: {state.user_message}")
-        asset_type = state.current_asset_type
-        user_config = state.user_message.strip().lower()
-
-        matching_assets = self.availability_tool.get_assets_by_type(asset_type)
-        configurations = self.availability_tool.get_asset_configurations(matching_assets)
-
-        if user_config:
-            filtered_configurations = [
-                config for config in configurations if user_config in config.values()
-            ]
-            response = f"Found {len(filtered_configurations)} configurations for {asset_type} with specified criteria:\n"
-            for i, config in enumerate(filtered_configurations, 1):
-                response += f"{i}. {config['name']} - {config['category']} - {config['status']} - {config['serial']}\n"
-        else:
-            response = f"Here are all the available configurations for {asset_type}:\n"
-            for i, config in enumerate(configurations, 1):
-                response += f"{i}. {config['name']} - {config['category']} - {config['status']} - {config['serial']}\n"
-
-        response += "\nAre you satisfied with the configurations?"
-        state.set_stage("check_availability")
-        state.add_message("assistant", response)
-        return state
-
-class AvailabilityCheckNode:
-    async def process(self, state: StateManager) -> StateManager:
-        print("\nDEBUG: Checking availability")
-        response = "Please confirm if you are satisfied with the configurations. If not, we can check another asset type or configuration."
+        logger.info(f"Processing configuration request: {state.user_message}")
+        response = "Your request has been recorded. Is there anything else you need?"
         state.set_stage("request_completed")
         state.add_message("assistant", response)
         return state
 
+class Edge:
+    def __init__(self, from_node: str, to_node: str, condition: callable):
+        self.from_node = from_node
+        self.to_node = to_node
+        self.condition = condition
+
 class Graph:
     def __init__(self, availability_tool: AssetAvailabilityTool):
-        print("\nDEBUG: Initializing Graph")
+        logger.info("Initializing Graph")
         self.availability_tool = availability_tool
         self.state_manager = StateManager()
-        self.greeting_node = GreetingNode()
-        self.asset_request_node = AssetRequestNode(self.availability_tool)
-        self.configuration_node = ConfigurationNode(self.availability_tool)
-        self.availability_check_node = AvailabilityCheckNode()
+        
+        # Initialize nodes
+        self.nodes = {
+            "greeting": GreetingNode(),
+            "asset_request": AssetRequestNode(self.availability_tool),
+            "configuration": ConfigurationNode(self.availability_tool)
+        }
+        
+        # Define valid asset types
+        self.valid_asset_types = {"laptop", "desktop"}
+        
+        # Initialize edges
+        self.edges = self._setup_edges()
+
+    def _setup_edges(self) -> List[Edge]:
+        """Setup the edges defining valid transitions between nodes"""
+        return [
+            Edge(
+                from_node="greeting",
+                to_node="asset_request",
+                condition=lambda msg: msg.lower() in self.valid_asset_types
+            ),
+            Edge(
+                from_node="asset_request",
+                to_node="configuration",
+                condition=lambda msg: msg.isdigit()
+            ),
+            Edge(
+                from_node="configuration",
+                to_node="greeting",
+                condition=lambda _: True  # Always allow return to greeting after configuration
+            )
+        ]
+
+    def _get_next_node(self, current_stage: str, message: str) -> str:
+        """Determine the next node based on current stage and message"""
+        for edge in self.edges:
+            if edge.from_node == current_stage and edge.condition(message):
+                return edge.to_node
+        return current_stage  # Stay in current node if no valid transition
 
     async def process_message(self, message: str) -> dict:
-        print(f"\nDEBUG: Processing message: {message}")
+        logger.info(f"Processing message: {message}")
         self.state_manager.set_user_message(message.lower())
         
-        # First check if it's a greeting when no stage is set
-        if self.state_manager.conversation_stage is None and message.lower() in ["hi", "hello", "hey", "help", "start"]:
-            print("DEBUG: Routing to greeting node")
-            await self.greeting_node.process(self.state_manager)
-        # Then handle the conversation flow based on stages
-        elif self.state_manager.conversation_stage == "awaiting_asset_type":
-            print("DEBUG: Routing to asset request node")
-            await self.asset_request_node.process(self.state_manager)
-        elif self.state_manager.conversation_stage == "awaiting_configuration":
-            print("DEBUG: Routing to configuration node")
-            await self.configuration_node.process(self.state_manager)
-        elif self.state_manager.conversation_stage == "check_availability":
-            print("DEBUG: Routing to availability check node")
-            await self.availability_check_node.process(self.state_manager)
-        elif self.state_manager.conversation_stage == "request_completed":
-            print("DEBUG: Starting new conversation")
-            await self.greeting_node.process(self.state_manager)
-        else:
-            # Only default to greeting if no stage is set and it's not a recognized greeting
-            print("DEBUG: Starting new conversation (default)")
-            await self.greeting_node.process(self.state_manager)
+        try:
+            # Handle initial state
+            if self.state_manager.conversation_stage is None:
+                if message.lower() in ["hi", "hello", "hey", "help", "start"]:
+                    await self.nodes["greeting"].process(self.state_manager)
+                    return self.state_manager.to_dict()
 
-        return self.state_manager.to_dict()
+            # Map conversation stages to node names
+            stage_to_node = {
+                "awaiting_asset_type": "greeting",
+                "awaiting_configuration": "asset_request",
+                "request_completed": "configuration"
+            }
+
+            current_node = stage_to_node.get(self.state_manager.conversation_stage, "greeting")
+            
+            # Handle invalid asset type
+            if current_node == "greeting" and message.lower() not in self.valid_asset_types:
+                response = "Invalid asset type. Please specify either 'Laptop' or 'Desktop'."
+                self.state_manager.add_message("assistant", response)
+                self.state_manager.set_stage("awaiting_asset_type")
+                return self.state_manager.to_dict()
+
+            # Get next node based on edges
+            next_node = self._get_next_node(current_node, message)
+            
+            # Process the message in the appropriate node
+            if next_node == "greeting":
+                await self.nodes["greeting"].process(self.state_manager)
+            elif next_node == "asset_request":
+                await self.nodes["asset_request"].process(self.state_manager)
+            elif next_node == "configuration":
+                await self.nodes["configuration"].process(self.state_manager)
+
+            return self.state_manager.to_dict()
+            
+        except Exception as e:
+            logger.error(f"Error in process_message: {str(e)}")
+            raise
+
 
 if __name__ == "__main__":
     async def main():
-        print("DEBUG: Starting main application")
+        logger.info("Starting main application")
         availability_tool = AssetAvailabilityTool()
         graph = Graph(availability_tool)
         
+
     asyncio.run(main())
