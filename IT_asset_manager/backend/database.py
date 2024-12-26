@@ -20,6 +20,16 @@ class ChatHistory(Base):
     conversation_history = Column(JSON)
     current_request = Column(JSON)
 
+class Asset(Base):
+    __tablename__ = 'assets'
+
+    asset_id = Column(Integer, primary_key=True, index=True)
+    asset_name = Column(String, index=True)
+    configuration = Column(String)
+    category = Column(String)
+    request_status = Column(String)
+
+
 # Create the table if it doesn't exist
 Base.metadata.create_all(bind=engine)
 

@@ -1,164 +1,160 @@
+# from langgraph.graph import StateGraph, START, END
+# from pydantic import BaseModel, Field
+# from typing import Optional, List, Dict, Any
+# import logging
 # import requests
 # from dotenv import load_dotenv
-# from typing import List, Dict
 # import os
 # import asyncio
-# from dataclasses import dataclass
-# from typing import Any, Callable
 
-# # Load environment variables
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 # load_dotenv()
 
-# # Configuration for AssetAvailabilityTool
-# def fetch_assets(product: str = None) -> List[dict]:
-#     assets = []
-#     offset = 0
-#     limit = 50
-#     bluetally_base_url = "https://app.bluetallyapp.com/api/v1"
-#     bluetally_api_key = os.getenv("BLUETALLY_API_KEY")
+# class ConversationState(BaseModel):
+#     """
+#     Represents the state of a conversation.
+#     """
+#     conversation_history: List[Dict[str, str]] = Field(default_factory=list, description="The conversation history.")
+#     conversation_stage: Optional[str] = Field(default=None, description="Current stage of the conversation.")
+#     user_message: str = Field(default="", description="The latest message from the user.")
+#     current_asset_type: Optional[str] = Field(default=None, description="The type of asset being queried.")
+#     assets: List[Dict] = Field(default_factory=list, description="List of fetched assets.")
+#     valid_asset_types: List[str] = Field(default_factory=lambda: ["laptop", "desktop"], description="Supported asset types.")
 
-#     while True:
-#         url = f"{bluetally_base_url}/assets"
-#         params = {"limit": limit, "sort": "asset_id", "order": "asc", "offset": offset}
-#         if product:
-#             params["product"] = product
+# class AssetAvailabilityTool:
+#     """
+#     Tool for managing and retrieving asset availability from the Bluetally API.
+#     """
+#     def __init__(self):
+#         self.bluetally_base_url = "https://app.bluetallyapp.com/api/v1/assets"
+#         self.bluetally_api_key = os.getenv("BLUETALLY_API_KEY")
+#         self.session = requests.Session()
+#         logger.info(f"Initialized AssetAvailabilityTool with API key: {'Present' if self.bluetally_api_key else 'Missing'}")
 
+#     def _make_request(self, params: Dict[str, Any]) -> Optional[List[Dict]]:
+#         """
+#         Makes a request to the Bluetally API.
+#         """
 #         headers = {
 #             "accept": "application/json",
-#             "Authorization": f"Bearer {bluetally_api_key}",
+#             "authorization": f"Bearer {self.bluetally_api_key}",
 #         }
+#         try:
+#             response = self.session.get(self.bluetally_base_url, headers=headers, params=params, timeout=30)
+#             response.raise_for_status()
+#             return response.json()
+#         except requests.RequestException as e:
+#             logger.error(f"API request failed: {e}")
+#             return None
 
-#         response = requests.get(url, headers=headers, params=params)
-#         if response.status_code != 200:
-#             print("Failed to fetch assets.")
-#             break
-
-#         data = response.json()
-#         batch = data.get("assets", [])
-#         assets.extend(batch)
-
-#         if len(batch) < limit:
-#             break
-#         offset += limit
-
-#     return assets
-
-# def check_availability(asset_type: str) -> bool:
-#     assets = fetch_assets()
-#     return any(asset_type.lower() in asset.get("name", "").lower() for asset in assets)
-
-# def get_configurations(asset_type: str) -> List[str]:
-#     assets = fetch_assets()
-#     return [
-#         asset.get("configuration", "No configuration info")
-#         for asset in assets
-#         if asset_type.lower() in asset.get("name", "").lower()
-#     ]
-
-# # State Manager Functions
-# def create_state_manager():
-#     return {
-#         "conversation_history": [],
-#         "conversation_stage": None,
-#         "user_message": ""
-#     }
-
-# def add_message(state, role: str, content: str):
-#     state["conversation_history"].append({"role": role, "content": content})
-
-# def set_user_message(state, message: str):
-#     state["user_message"] = message
-#     add_message(state, "user", message)
-
-# def set_stage(state, stage: str):
-#     state["conversation_stage"] = stage
-
-# def to_dict(state):
-#     return {
-#         "conversation_history": state["conversation_history"],
-#         "conversation_stage": state["conversation_stage"]
-#     }
-
-# # Node Processing Functions
-# async def process_greeting(state):
-#     response = "Hello! What type of asset are you looking for?"
-#     set_stage(state, "awaiting_asset_type")
-#     add_message(state, "assistant", response)
-#     return state
-
-# async def process_asset_request(state):
-#     asset_types = ["laptop", "desktop", "mouse", "keyboard"]
-#     mentioned_assets = [asset for asset in asset_types if asset in state["user_message"].lower()]
-
-#     if mentioned_assets:
-#         asset_type = mentioned_assets[0]
-#         is_available = check_availability(asset_type)
-#         configs = get_configurations(asset_type)
-
-#         if is_available:
-#             response = f"Available configurations for {asset_type}: {', '.join(configs)}."
-#             set_stage(state, "awaiting_configuration")
-#         else:
-#             response = f"{asset_type} is not available. Would you like to try another asset?"
-#             set_stage(state, "awaiting_asset_type")
-#     else:
-#         response = "I didn't recognize the asset type. Please specify a laptop, desktop, mouse, or keyboard."
-
-#     add_message(state, "assistant", response)
-#     return state
-
-# async def process_configuration(state):
-#     set_stage(state, "awaiting_reason")
-#     response = "Please provide the reason for your request."
-#     add_message(state, "assistant", response)
-#     return state
-
-# async def process_reason(state):
-#     set_stage(state, "request_completed")
-#     response = f"Your request has been recorded: {to_dict(state)}. Is there anything else you need?"
-#     add_message(state, "assistant", response)
-#     return state
-
-# async def process_invalid(state):
-#     response = "Sorry, I didn't understand that. Can you please clarify?"
-#     add_message(state, "assistant", response)
-#     return state
-
-# # Main Processing Function
-# async def process_message(state, message: str) -> dict:
-#     set_user_message(state, message)
-
-#     if message.lower() in ["hi", "hello", "hii", "hey", "greetings"]:
-#         await process_greeting(state)
-#     elif state["conversation_stage"] == "awaiting_asset_type":
-#         await process_asset_request(state)
-#     elif state["conversation_stage"] == "awaiting_configuration":
-#         await process_configuration(state)
-#     elif state["conversation_stage"] == "awaiting_reason":
-#         await process_reason(state)
-#     elif state["conversation_stage"] == "request_completed":
-#         response = "Is there anything else you need help with?"
-#         add_message(state, "assistant", response)
-#     else:
-#         await process_invalid(state)
-
-#     return to_dict(state)
-
-# # Example usage if running standalone
-# if __name__ == "__main__":
-#     async def main():
-#         state = create_state_manager()
+#     def fetch_all_assets(self) -> List[Dict]:
+#         """
+#         Retrieves all assets from the API.
+#         """
+#         all_assets = []
+#         offset = 0
+#         limit = 50
 
 #         while True:
-#             user_input = input("User: ")
-#             if user_input.lower() in ["exit", "quit"]:
+#             params = {"limit": limit, "offset": offset, "sort": "asset_id", "order": "asc"}
+#             assets = self._make_request(params)
+#             if not assets:
 #                 break
-#             result = await process_message(state, user_input)
-#             print(f"State: {result['conversation_stage']}")
+#             all_assets.extend(assets)
+#             if len(assets) < limit:
+#                 break
+#             offset += limit
+        
+#         return all_assets
+
+#     def get_assets_by_type(self, asset_type: str) -> List[Dict]:
+#         """
+#         Filters assets by type.
+#         """
+#         all_assets = self.fetch_all_assets()
+#         asset_type_lower = asset_type.lower()
+#         return [
+#             asset for asset in all_assets
+#             if asset_type_lower in (
+#                 asset.get("product_name", "").lower(),
+#                 asset.get("category_name", "").lower(),
+#                 asset.get("asset_name", "").lower()
+#             )
+#         ]
+
+# class StateManager:
+#     """
+#     Manages conversation state and history.
+#     """
+#     def __init__(self):
+#         logger.info("Initializing StateManager")
+#         self.conversation_history = []
+#         self.conversation_stage = None
+#         self.user_message = ""
+#         self.current_asset_type = None
+
+#     def add_message(self, role: str, content: str):
+#         self.conversation_history.append({"role": role, "content": content})
+
+#     def set_user_message(self, message: str):
+#         self.user_message = message
+#         self.add_message("user", message)
+
+#     def set_stage(self, stage: str):
+#         valid_stages = {"awaiting_asset_type", "awaiting_configuration", "request_completed", None}
+#         if stage not in valid_stages:
+#             raise ValueError(f"Invalid stage: {stage}")
+#         self.conversation_stage = stage
+
+#     def to_dict(self) -> Dict[str, Any]:
+#         return {
+#             "conversation_history": self.conversation_history,
+#             "conversation_stage": self.conversation_stage,
+#             "current_asset": {"type": self.current_asset_type}
+#         }
+
+# class Graph:
+#     """
+#     Main graph for managing conversation and asset-related workflows.
+#     """
+#     def __init__(self, availability_tool: AssetAvailabilityTool):
+#         logger.info("Initializing Graph")
+#         self.availability_tool = availability_tool
+#         self.state_manager = StateManager()
+
+#     def process_message(self, message: str) -> Dict:
+#         """
+#         Processes user messages and manages state transitions.
+#         """
+#         self.state_manager.set_user_message(message)
+#         response = ""
+#         if not self.state_manager.conversation_stage:
+#             response = "Hello! What type of asset are you looking for? (e.g., Laptop, Desktop)"
+#             self.state_manager.set_stage("awaiting_asset_type")
+#         elif self.state_manager.conversation_stage == "awaiting_asset_type":
+#             assets = self.availability_tool.get_assets_by_type(message)
+#             if assets:
+#                 response = f"Found {len(assets)} {message}(s)."
+#                 self.state_manager.set_stage("awaiting_configuration")
+#             else:
+#                 response = f"No {message}s available. Try another type."
+#         elif self.state_manager.conversation_stage == "awaiting_configuration":
+#             response = "Request recorded. Anything else?"
+#             self.state_manager.set_stage("request_completed")
+#         else:
+#             response = "Conversation complete. Thank you!"
+
+#         self.state_manager.add_message("assistant", response)
+#         return self.state_manager.to_dict()
+
+# if __name__ == "__main__":
+#     async def main():
+#         logger.info("Starting main application")
+#         availability_tool = AssetAvailabilityTool()
+#         graph = Graph(availability_tool)
 
 #     asyncio.run(main())
-
-
 
 
 
@@ -226,7 +222,7 @@ load_dotenv()
 
 class AssetAvailabilityTool:
     def __init__(self):
-        self.bluetally_base_url = "https://app.bluetallyapp.com/api/v1/assets"
+        self.bluetally_base_url = "https://try.readme.io/https://app.bluetallyapp.com/api/v1/assets"
         self.bluetally_api_key = os.getenv("BLUETALLY_API_KEY")
         # Initialize session for persistent headers
         self.session = requests.Session()
@@ -244,12 +240,8 @@ class AssetAvailabilityTool:
             headers = {
                 "accept": "application/json",
                 "authorization": f"Bearer {self.bluetally_api_key}",
-                # "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                # "Accept-Language": "en-US,en;q=0.9",
-                # "Accept-Encoding": "gzip, deflate, br",
-                # "Connection": "keep-alive",
-                # "Cache-Control": "no-cache",
-                # "Pragma": "no-cache"
+                "origin":"https://developers.bluetallyapp.com"
+              
             }
             
             # Update session headers
@@ -347,38 +339,6 @@ class AssetAvailabilityTool:
             configurations.append(config)
         return configurations
 
-# class StateManager:
-#     def __init__(self):
-#         logger.info("Initializing StateManager")
-#         self.conversation_history = []
-#         self.conversation_stage = None
-#         self.user_message = ""
-#         self.current_asset_type = None
-
-#     def add_message(self, role: str, content: str):
-#         self.conversation_history.append({"role": role, "content": content})
-
-#     def set_user_message(self, message: str):
-#         self.user_message = message
-#         self.add_message("user", message)
-
-#     def set_stage(self, stage: str):
-#         valid_stages = {
-#             "awaiting_asset_type",
-#             "awaiting_configuration",
-#             "request_completed",
-#             None
-#         }
-#         if stage not in valid_stages:
-#             raise ValueError(f"Invalid stage: {stage}")
-#         self.conversation_stage = stage
-
-#     def to_dict(self):
-#         return {
-#             "conversation_history": self.conversation_history,
-#             "conversation_stage": self.conversation_stage,
-#             "current_asset": {"type": self.current_asset_type}
-#         }
 class StateManager:
     def __init__(self):
         logger.info("Initializing StateManager")
@@ -497,7 +457,7 @@ class Graph:
             Edge(
                 from_node="configuration",
                 to_node="greeting",
-                condition=lambda _: True  # Always allow return to greeting after configuration
+                condition=lambda _: True  
             )
         ]
 
@@ -560,4 +520,5 @@ if __name__ == "__main__":
         graph = Graph(availability_tool)
         
 
+    
     asyncio.run(main())
